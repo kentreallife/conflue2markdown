@@ -115,13 +115,26 @@ document.addEventListener('DOMContentLoaded', function() {
     // クリップボードにコピーボタンの処理
     copyBtn.addEventListener('click', () => {
         if (outputArea && outputArea.value) {
+            const originalButtonText = copyBtn.textContent;
             navigator.clipboard.writeText(outputArea.value)
                 .then(() => {
                     setStatus('Markdownをクリップボードにコピーしました。', 'status-success');
+                    copyBtn.textContent = 'コピーしました！';
+                    copyBtn.classList.add('success');
+                    setTimeout(() => {
+                        copyBtn.textContent = originalButtonText;
+                        copyBtn.classList.remove('success');
+                    }, 2500);
                 })
                 .catch(err => {
                     console.error('クリップボードへのコピーに失敗: ', err);
                     setStatus('コピーに失敗しました。', 'status-error');
+                    copyBtn.textContent = 'コピー失敗';
+                    copyBtn.classList.add('error');
+                    setTimeout(() => {
+                        copyBtn.textContent = originalButtonText;
+                        copyBtn.classList.remove('error');
+                    }, 2500);
                 });
         } else {
             setStatus('コピーする内容がありません。', 'status-warning');

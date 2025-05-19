@@ -374,158 +374,216 @@ window.myConfluenceConverter = {
     // テーブルの変換
     convertTable: function(tableContainer) {
         console.log('テーブル変換開始', tableContainer);
-        
-        // Confluenceでは複数のテーブル要素が入れ子になっていることがある
-        // これには「固定ヘッダー用」と「データ用」のテーブルが分かれていることがある
-        
-        // 最初にすべてのtableを探す
         const allTables = tableContainer.querySelectorAll('table');
-        console.log('見つかったテーブル数:', allTables.length);
-        
         if (allTables.length === 0) {
             console.error('テーブル要素が見つかりません');
             return '';
         }
-        
-        // Confluenceのテーブル構造：通常は固定ヘッダー用とデータ用に分かれている
-        // 適切なテーブルを特定（通常は最も行数の多いテーブルがメインテーブル）
+
         let mainTable = null;
-        let maxRows = 0;
-        
+        let maxRowsCount = 0;
         allTables.forEach(table => {
             const rowCount = table.querySelectorAll('tr').length;
-            console.log('テーブルの行数:', rowCount);
-            if (rowCount > maxRows) {
-                maxRows = rowCount;
+            if (rowCount > maxRowsCount) {
+                maxRowsCount = rowCount;
                 mainTable = table;
             }
         });
-        
-        // メインテーブルが見つからない場合は最初のテーブルを使用
-        if (!mainTable && allTables.length > 0) {
-            mainTable = allTables[0];
-        }
-        
-        if (!mainTable) {
-            return '';
-        }
-        
-        // テーブルの行を収集
-        const rows = mainTable.querySelectorAll('tr');
-        console.log('最終的なテーブルの行数:', rows.length);
-        
-        if (rows.length === 0) {
-            return '';
-        }
-        
-        // MarkdownテーブルデータのためのCSV風の2次元配列を作成
-        const tableData = [];
-        
-        // 各行を処理
-        rows.forEach((row, rowIndex) => {
-            console.log(`行 ${rowIndex} の処理中...`);
-            const rowData = [];
-            
-            // その行のすべてのセル（thとtd）を取得
-            const cells = row.querySelectorAll('th, td');
-            console.log(`行 ${rowIndex} のセル数:`, cells.length);
-            
-            // 各セルを処理
-            cells.forEach((cell, cellIndex) => {
-                
-                // セルの直接の子要素を処理
-                const cellChildren = cell.childNodes;
-                const contentParts = []; // 変換されたパーツを格納する配列
-                
-                cellChildren.forEach(childNode => {
-                    let part = ''; // 各子ノードから変換された部分
-                    if (childNode.nodeType === Node.ELEMENT_NODE) {
-                        const tagName = childNode.tagName.toLowerCase();
-                        // 子要素がELEMENT_NODEの場合、適切な変換関数を呼び出す
-                        if (tagName === 'p') {
-                            part = this.processParagraphContent(childNode);
-                        } else if (tagName === 'ul') {
-                            // テーブルセル内では<br>で改行
-                            part = this.convertList(childNode, '-', false, true);
-                        } else if (tagName === 'ol') {
-                            // テーブルセル内では<br>で改行
-                            part = this.convertList(childNode, null, true, true);
-                        } else if (tagName === 'strong' || tagName === 'b') {
-                            part = `**${this.getTextContent(childNode)}**`;
-                        } else if (!childNode.matches('figure.ak-renderer-tableHeader-sorting-icon__wrapper')) {
-                            const childText = this.getTextContent(childNode);
-                            if (childText) {
-                                part = childText;
-                            }
-                        }
-                    } else if (childNode.nodeType === Node.TEXT_NODE && childNode.textContent.trim()) {
-                        part = childNode.textContent.trim();
-                    }
-                    
-                    // 空でない変換結果のみを追加
-                    if (part) {
-                        contentParts.push(part);
-                    }
-                });
+        if (!mainTable && allTables.length > 0) mainTable = allTables[0];
+        if (!mainTable) return '';
 
-                // 収集したパーツを<br>で結合
-                let cellContent = contentParts.join('<br>').trim();
+        const htmlRows = mainTable.querySelectorAll('tr');
+        if (htmlRows.length === 0) return '';
 
-                // 不要な末尾の<br>を削除
-                cellContent = cellContent.replace(/^(<br>)+|(<br>)+$/g, '');
-
-                console.log(`セル [${rowIndex}][${cellIndex}] の内容:`, cellContent);
-                rowData.push(cellContent);
+        // Determine grid dimensions
+        let numGridRows = 0;
+        let numGridCols = 0;
+        htmlRows.forEach((row, rIdx) => {
+            numGridRows++;
+            let currentCols = 0;
+            row.querySelectorAll('th, td').forEach(cell => {
+                const colspan = parseInt(cell.getAttribute('colspan') || '1');
+                currentCols += colspan;
             });
-            
-            // 行データを追加（空でない場合）
-            if (rowData.length > 0) {
-                tableData.push(rowData);
+            if (currentCols > numGridCols) {
+                numGridCols = currentCols;
             }
         });
         
-        // テーブルデータが空なら空文字を返す
-        if (tableData.length === 0) {
+        // Initialize Markdown grid with nulls (or a unique placeholder)
+        const markdownGrid = Array.from({ length: numGridRows }, () => Array(numGridCols).fill(null));
+
+        htmlRows.forEach((htmlRow, rIdx) => {
+            const htmlCells = htmlRow.querySelectorAll('th, td');
+            let currentGridCol = 0;
+            htmlCells.forEach(cell => {
+                // Find the next available cell in the markdownGrid for the current row
+                while (markdownGrid[rIdx][currentGridCol] !== null) {
+                    currentGridCol++;
+                    if (currentGridCol >= numGridCols) { // Should not happen if numGridCols is correct
+                        console.error("Error: Ran out of columns in markdownGrid");
+                        break;
+                    }
+                }
+                if (currentGridCol >= numGridCols) return;
+
+
+                const colspan = parseInt(cell.getAttribute('colspan') || '1');
+                const rowspan = parseInt(cell.getAttribute('rowspan') || '1');
+
+                // Extract cell content ( reusing existing logic)
+                const cellChildren = cell.childNodes;
+                const contentParts = [];
+                cellChildren.forEach(childNode => {
+                    let part = '';
+                    if (childNode.nodeType === Node.ELEMENT_NODE) {
+                        const tagName = childNode.tagName.toLowerCase();
+                        if (tagName === 'p') {
+                            part = this.processParagraphContent(childNode);
+                        } else if (tagName === 'ul') {
+                            part = this.convertList(childNode, '-', false, true);
+                        } else if (tagName === 'ol') {
+                            part = this.convertList(childNode, null, true, true);
+                        } else if (tagName === 'strong' || tagName === 'b') {
+                            part = `**${this.getTextContent(childNode)}**`;
+                        } else if (!childNode.matches('figure.ak-renderer-tableHeader-sorting-icon__wrapper') && !childNode.matches('div.ak-renderer-tableHeader-sortable-column') && !childNode.querySelector('div.ak-renderer-tableHeader-sortable-column')) {
+                            // The new conditions above are to avoid grabbing the whole sortable column div again if p is already processed.
+                            // Or if the cell content is directly in the th/td without a p (doc mode often has div wrapper)
+                            let tempContent = '';
+                            if (childNode.querySelector('p')) { // Prefer p if exists
+                                tempContent = this.processParagraphContent(childNode.querySelector('p'));
+                            } else {
+                                tempContent = this.getTextContent(childNode);
+                            }
+                             if (tempContent) part = tempContent;
+                        }
+                         // Special handling for "doc mode" where content might be inside a div inside th/td
+                        else if (childNode.classList && childNode.classList.contains('ak-renderer-tableHeader-sortable-column')) {
+                            const pElement = childNode.querySelector('p');
+                            if (pElement) {
+                                part = this.processParagraphContent(pElement);
+                            } else {
+                                part = this.getTextContent(childNode).replace(/\s*Sorting an icon that takes up space\s*/, '').trim(); // Clean up icon text
+                            }
+                        }
+
+                    } else if (childNode.nodeType === Node.TEXT_NODE && childNode.textContent.trim()) {
+                        part = childNode.textContent.trim();
+                    }
+                    if (part) contentParts.push(part);
+                });
+                let cellContent = contentParts.join('<br>').trim().replace(/^(<br>)+|(<br>)+$/g, '');
+                 // If still empty, try direct text content of the cell as a last resort.
+                if (!cellContent && cell.textContent) {
+                    let directText = cell.textContent.trim();
+                    // Remove known accessory text like sort icon placeholders if they are the only content
+                    const sortIconTextPattern = /header\d+|Sort alphabetically A to Z|Sort alphabetically Z to A|No order|結合セルを含む表は並べ替えられません/i;
+                    if (directText.match(sortIconTextPattern) && cell.querySelector('figure.ak-renderer-tableHeader-sorting-icon__wrapper')) {
+                         // Try to find a paragraph if the direct text is just header stuff
+                        const pElement = cell.querySelector('p');
+                        if (pElement) {
+                           directText = this.processParagraphContent(pElement);
+                        } else {
+                            directText = ''; // If it's just the sort icon stuff, make it empty
+                        }
+                    }
+                    // Remove text from sorting icon if it was picked up
+                    const sortingIconElement = cell.querySelector('.ak-renderer-tableHeader-sorting-icon');
+                    if (sortingIconElement && sortingIconElement.textContent) {
+                        directText = directText.replace(sortingIconElement.textContent.trim(), '').trim();
+                    }
+                    cellContent = directText;
+                }
+
+
+                // Place content and span markers
+                markdownGrid[rIdx][currentGridCol] = cellContent;
+
+                for (let c = 1; c < colspan; c++) {
+                    if (currentGridCol + c < numGridCols) {
+                        markdownGrid[rIdx][currentGridCol + c] = '>';
+                    }
+                }
+                for (let r = 1; r < rowspan; r++) {
+                    if (rIdx + r < numGridRows) {
+                        markdownGrid[rIdx + r][currentGridCol] = '^';
+                        for (let c = 1; c < colspan; c++) {
+                            if (currentGridCol + c < numGridCols) {
+                                markdownGrid[rIdx + r][currentGridCol + c] = '^';
+                            }
+                        }
+                    }
+                }
+                currentGridCol += colspan; // Move to the next available column slot based on colspan
+            });
+        });
+
+        // Filter out any fully null rows that might have been created if rowspan extended beyond actual content rows
+        const finalTableData = markdownGrid.filter(row => row.some(cell => cell !== null));
+        if (finalTableData.length === 0) {
+             console.error('テーブルにデータがありません (after merge logic)');
+             return '';
+        }
+
+        // Ensure all rows have the same number of columns, padding with empty strings
+        const finalColumnCount = Math.max(...finalTableData.map(row => row.filter(c => c !== null).length), numGridCols);
+
+        const processedTableData = finalTableData.map(row => {
+            const newRow = [];
+            let colIdx = 0;
+            for (let i = 0; i < finalColumnCount && colIdx < row.length; i++) {
+                if (row[colIdx] !== null) {
+                    newRow.push(row[colIdx] === null ? '' : row[colIdx]); // Replace null with empty string if it somehow slipped through
+                } else {
+                     // This case should ideally be handled by rowspan/colspan markers.
+                     // If a cell is genuinely null and not covered, it implies an irregular table structure
+                     // or an issue in the previous logic. We push an empty string to maintain structure.
+                    newRow.push('');
+                }
+                colIdx++;
+            }
+            // Pad if necessary after consuming all non-null original cells from the row
+            while(newRow.length < finalColumnCount) {
+                newRow.push('');
+            }
+            return newRow;
+        });
+        
+        // All cells in markdownGrid that are still null should be empty strings for markdown
+        processedTableData.forEach(row => {
+            for(let i=0; i < row.length; i++) {
+                if(row[i] === null) row[i] = '';
+            }
+        });
+
+
+        if (processedTableData.length === 0) {
             console.error('テーブルにデータがありません');
             return '';
         }
         
-        console.log('収集されたテーブルデータ:', tableData);
-        
-        // 各列の最大幅を計算（区切り線のため - <br>は幅計算に含めない）
-        const columnCount = Math.max(...tableData.map(row => row.length));
-        const columnWidths = Array(columnCount).fill(0);
-        
-        tableData.forEach(row => {
-            // セル数を揃える
-            while (row.length < columnCount) {
-                row.push('');
-            }
-            // 幅を計算
+        // Calculate column widths for formatting (use processedTableData)
+        const columnWidths = Array(finalColumnCount).fill(0);
+        processedTableData.forEach(row => {
             row.forEach((cell, colIndex) => {
-                // <br>を除去したテキストで幅を計算
-                const textWidth = cell.replace(/<br>/g, '').length;
-                columnWidths[colIndex] = Math.max(columnWidths[colIndex], textWidth);
+                const textWidth = String(cell).replace(/<br>/g, '').length; // Ensure cell is string
+                columnWidths[colIndex] = Math.max(columnWidths[colIndex] || 0, textWidth);
             });
         });
-        
-        console.log('列の最大幅:', columnWidths);
-        
-        // Markdownテーブルを生成
+        columnWidths.forEach((_, i) => columnWidths[i] = Math.max(3, columnWidths[i]));
+
+
         let markdown = '';
-        
-        // ヘッダー行（最初の行）
-        markdown += '| ' + tableData[0].join(' | ') + ' |\n';
-        
-        // 区切り行（最小長3、計算した幅に合わせる）
-        markdown += '| ' + columnWidths.map(width => '-'.repeat(Math.max(3, width))).join(' | ') + ' |\n';
-        
-        // データ行（2行目以降）
-        for (let i = 1; i < tableData.length; i++) {
-            markdown += '| ' + tableData[i].join(' | ') + ' |\n';
+        // Header row
+        markdown += '| ' + processedTableData[0].map((cell, colIndex) => String(cell).padEnd(columnWidths[colIndex])).join(' | ') + ' |\n';
+        // Separator row
+        markdown += '| ' + columnWidths.map(width => '-'.repeat(width)).join(' | ') + ' |\n';
+        // Data rows
+        for (let i = 1; i < processedTableData.length; i++) {
+            markdown += '| ' + processedTableData[i].map((cell, colIndex) => String(cell).padEnd(columnWidths[colIndex])).join(' | ') + ' |\n';
         }
         
-        console.log('変換されたMarkdownテーブル:', markdown);
+        console.log('変換されたMarkdownテーブル (merged cells):', markdown);
         return markdown;
     },
     
