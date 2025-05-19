@@ -10,22 +10,26 @@
 
 ## 3. 変換対象要素
 - 見出し（`<h1>`, `<h2>`, `<h3>`タグ、`data-prosemirror-node-name="heading"`属性、`data-drag-handler-node-type="heading-N"`属性）→ `#`, `##`, `###`
-- 太字（`<strong data-prosemirror-mark-name="strong">`）→ `**テキスト**`
-- イタリック体（`<em>` や `<em data-prosemirror-mark-name="em">` (仮)）→ `*テキスト*`
-- 色付きテキスト（`<span style="color: ...;">`） → `<span style="color: ...;">テキスト</span>` (spanタグを維持)
-- 箇条書き（`<ul data-prosemirror-node-name="bulletList">`内の`<li data-prosemirror-node-name="listItem">`、インデントは `data-indent-level`属性）→ `- アイテム`
-- 番号付きリスト（`<ol data-prosemirror-node-name="orderedList">`内の`<li data-prosemirror-node-name="listItem">`、インデントは `data-indent-level`属性）→ `1. アイテム`
-- テーブル（`<div data-prosemirror-node-name="table">`内の`<table>`, `<tr>`, `<th>`, `<td>`タグ。ProseMirror属性として`tableRow`, `tableHeader`, `tableCell`）→ Markdownテーブル形式
+- 太字（`<strong>`タグ、`<b data-prosemirror-mark-name="strong">`）→ `**テキスト**`
+- イタリック体（`<em>`タグ、`<i data-prosemirror-mark-name="em">`）→ `*テキスト*`
+- 色付きテキスト（`<span class="fabric-text-color-mark" style="color: ...;">`） → `<span style="color: ...;">テキスト</span>` (spanタグとstyle属性を維持)
+- 箇条書き（`<ul>`内の`<li>`、インデントは `data-indent-level`属性で処理）→ `- アイテム` (ネスト対応)
+- 番号付きリスト（`<ol>`内の`<li>`、インデントは `data-indent-level`属性で処理）→ `1. アイテム` (ネスト対応)
+- テーブル（`<div class="pm-table-container">`内の`<table>`, `<tr>`, `<th>`, `<td>`タグ。セル内のテキスト、太字、リスト（セル内改行は`<br>`）も変換）→ Markdownテーブル形式
 - 水平線（`<hr data-prosemirror-node-name="rule">`）→ `---`
-- コードブロック（`<pre>` や `<code>` を含む要素、Confluenceの専用クラスや属性を確認） → ````言語コード````
-- インラインコード（`<code>`タグ、Confluenceの専用クラスや属性を確認） → `` `コード` ``
-- 引用（`<blockquote>`タグ、Confluenceの専用クラスや属性を確認） → `> 引用テキスト`
+- コードブロック（`<pre>`タグ） → ````
+テキスト
+```` (現状、言語指定は未対応)
+- インラインコード（`<pre>`タグ内にない`<code>`タグ） → `` `コード` ``
+- 引用（`<blockquote>`タグ） → `> 引用テキスト` (複数行対応)
 - リンク（`<a>`タグ、`href`属性） → `[テキスト](URL)`
 - 画像（`<img>`タグ、`src`属性、`alt`属性） → `![代替テキスト](URL)`
-- チェックボックス（現状は`<p>`タグ内のテキストだが、Confluenceのタスクリスト要素（例：`<div data-task-local-id="...">`や`<span class="task-list-item">`など）を想定） → `- [ ]` または `- [x]`
-- 情報パネル（ノート/ヒント/警告など）（Confluenceの専用divコンテナやクラス（例：`class="ak-panel"` `data-panel-type="info"`など）を確認）
-- 折りたたみセクション（Confluenceの専用マクロやクラス構造を確認）
-- 添付ファイル参照（Confluenceの専用マクロやリンク形式を確認）
+- チェックボックス:
+    - Confluenceのタスクリスト（例: `<div data-task-list-local-id> <div data-task-local-id> <input type="checkbox"> <div data-component="content">`） → `[ ] テキスト` または `[x] テキスト`
+    - 段落(`p`)内のチェックボックス（例: `<p><input type="checkbox">テキスト</p>`） → `[ ] テキスト` または `[x] テキスト`
+- 情報パネル（ノート/ヒント/警告など）（`<div class="ak-panel" data-panel-type="...">`）→ `<div class="ak-panel" data-panel-type="...">Markdown変換された内部コンテンツ</div>` (HTML構造を維持し、内部コンテンツを再帰的にMarkdown変換)
+- 折りたたみセクション（Confluenceの専用マクロやクラス構造を確認）→ (未実装)
+- 添付ファイル参照（Confluenceの専用マクロやリンク形式を確認）→ (未実装)
 
 ## 4. 技術仕様
 - Chrome Extension Manifest V3形式

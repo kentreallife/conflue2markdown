@@ -1,201 +1,160 @@
-const convertBtn = document.getElementById('convertBtn');
-const copyBtn = document.getElementById('copyBtn');
-const outputArea = document.getElementById('output');
-const saveBtn = document.getElementById('saveBtn');
-
-// エンコーディング問題を解決するための文字化け防止対策
 document.addEventListener('DOMContentLoaded', function() {
-  // 文字エンコーディングを明示的に指定
-  document.querySelector('meta[charset]').setAttribute('charset', 'utf-8');
-});
-
-convertBtn.addEventListener('click', async () => {
-  outputArea.value = '変換中...';
-  copyBtn.disabled = true;
-  saveBtn.disabled = true;
-
-  let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-  // まず content.js を注入する（すでに注入されている場合は無視される）
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
-    });
-    
-    // content.js が注入された後、変換機能を実行
-    chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      function: convertPageToMarkdown,
-    }, (injectionResults) => {
-      handleConversionResult(injectionResults);
-    });
-  } catch (err) {
-    console.error('スクリプト注入エラー:', err);
-    outputArea.value = 'エラー: スクリプトの注入に失敗しました。\n' + err.message;
-    copyBtn.disabled = true;
-    saveBtn.disabled = true;
-  }
-});
-
-// 変換結果を処理する関数
-function handleConversionResult(injectionResults) {
-  if (chrome.runtime.lastError || !injectionResults || !injectionResults[0]) {
-    outputArea.value = 'エラー: ページの変換に失敗しました。\n' + (chrome.runtime.lastError ? chrome.runtime.lastError.message : '不明なエラーが発生しました。');
-    copyBtn.disabled = true;
-    saveBtn.disabled = true;
-    return;
-  }
-  
-  const markdown = injectionResults[0].result;
-  if (markdown) {
-    // 文字化け防止のために一度デコードしてからエンコードしなおす
-    try {
-      // 直接テキストを設定
-      outputArea.value = markdown;
-      copyBtn.disabled = false;
-      saveBtn.disabled = false;
-    } catch (err) {
-      console.error('テキスト設定エラー:', err);
-      outputArea.value = 'エラー: テキスト設定に失敗しました。';
-      copyBtn.disabled = true;
-      saveBtn.disabled = true;
+    // 文字エンコーディングを明示的に指定
+    const metaCharset = document.querySelector('meta[charset]');
+    if (metaCharset) {
+        metaCharset.setAttribute('charset', 'utf-8');
     }
-  } else {
-    outputArea.value = '変換可能なコンテンツが見つかりませんでした。';
-    copyBtn.disabled = true;
-    saveBtn.disabled = true;
-  }
-}
 
-copyBtn.addEventListener('click', () => {
-  if (outputArea.value) {
-    // 方法1: クリップボードへのコピー（document.execCommand）
-    try {
-      // テキストエリアを選択
-      outputArea.select();
-      // コピーコマンドを実行
-      const success = document.execCommand('copy');
-      
-      if (success) {
-        copyBtn.textContent = 'コピーしました！';
-        setTimeout(() => { copyBtn.textContent = 'クリップボードにコピー'; }, 1000);
-        return;
-      }
-    } catch (err) {
-      console.error('execCommandコピーエラー:', err);
-    }
-    
-    // 方法2: Blobを使用した方法
-    try {
-      const blob = new Blob([outputArea.value], { type: 'text/plain;charset=utf-8' });
-      
-      // IE11対応（ClipboardAPIが使えない場合）
-      if (navigator.msSaveBlob) {
-        navigator.msSaveBlob(blob, 'confluence-export.md');
-        copyBtn.textContent = 'コピーしました！';
-        setTimeout(() => { copyBtn.textContent = 'クリップボードにコピー'; }, 1000);
-        return;
-      }
-      
-      // 現代的なブラウザ対応
-      const data = [new ClipboardItem({ [blob.type]: blob })];
-      navigator.clipboard.write(data).then(() => {
-        copyBtn.textContent = 'コピーしました！';
-        setTimeout(() => { copyBtn.textContent = 'クリップボードにコピー'; }, 1000);
-      }).catch(err => {
-        console.error('Blob経由のコピーエラー:', err);
-        
-        // 方法3: 最終手段としてのClipboard APIテキスト
-        navigator.clipboard.writeText(outputArea.value).then(() => {
-          copyBtn.textContent = 'コピーしました！';
-          setTimeout(() => { copyBtn.textContent = 'クリップボードにコピー'; }, 1000);
-        }).catch(finalErr => {
-          console.error('最終手段コピーエラー:', finalErr);
-          outputArea.value += '\n\nコピーに失敗しました。テキストを手動で選択しコピーしてください。';
-        });
-      });
-    } catch (err) {
-      console.error('高度なコピー方法エラー:', err);
-      // 最終フォールバック
-      try {
-        navigator.clipboard.writeText(outputArea.value).then(() => {
-          copyBtn.textContent = 'コピーしました！';
-          setTimeout(() => { copyBtn.textContent = 'クリップボードにコピー'; }, 1000);
-        }).catch(err => {
-          outputArea.value += '\n\nコピーに失敗しました。テキストを手動で選択しコピーしてください。';
-        });
-      } catch (finalErr) {
-        outputArea.value += '\n\nコピーに失敗しました。テキストを手動で選択しコピーしてください。';
-      }
-    }
-  }
-});
+    const convertBtn = document.getElementById('convertBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const outputArea = document.getElementById('output');
+    const saveBtn = document.getElementById('saveBtn');
+    const statusMessage = document.getElementById('statusMessage');
 
-// ファイルとして保存ボタンの処理
-saveBtn.addEventListener('click', () => {
-  if (outputArea.value) {
-    try {
-      const blob = new Blob([outputArea.value], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'confluence-export.md';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      saveBtn.textContent = '保存しました！';
-      setTimeout(() => { saveBtn.textContent = 'ファイルとして保存'; }, 1500);
-    } catch (err) {
-      console.error('ファイル保存エラー:', err);
-      const originalText = saveBtn.textContent;
-      saveBtn.textContent = '保存失敗';
-      setTimeout(() => { saveBtn.textContent = originalText; }, 2000);
-    }
-  }
-});
-
-// この関数は content.js 側で実行される
-function convertPageToMarkdown() {
-    // content.js で実装されたConverterオブジェクトを確認
-    console.log('変換を開始します...');
-    console.log('myConfluenceConverter存在チェック:', !!window.myConfluenceConverter);
-    
-    // content.js で実装されたConverterオブジェクトを使用
-    if (window.myConfluenceConverter && typeof window.myConfluenceConverter.convert === 'function') {
-        try {
-            console.log('Converterを実行します');
-            const result = window.myConfluenceConverter.convert();
-            console.log('変換結果:', result.substring(0, 50) + '...');
-            return result;
-        } catch (err) {
-            console.error('Converter実行エラー:', err);
-            return "エラー: 変換処理の実行中に問題が発生しました。" + err.message;
+    // statusMessage要素が存在しない場合のフォールバック処理
+    function setStatus(message, type) {
+        if (statusMessage) {
+            statusMessage.textContent = message;
+            statusMessage.className = type;
+        } else {
+            console.warn("statusMessage element not found. Message:", message, "Type:", type);
         }
-    } else {
-        console.error('myConfluenceConverterが見つかりません');
-    }
-    
-    // フォールバック：Converterが見つからない場合は簡易的な変換を実行
-    console.log('フォールバック処理を実行します');
-    const contentArea = document.querySelector('.ak-renderer-document');
-    if (!contentArea) {
-        console.error("Could not find Confluence content area (.ak-renderer-document)");
-        return "エラー: コンテンツエリアが見つかりませんでした。";
     }
 
-    // 簡単なテストとして、見出し1を取得してみる
-    const h1 = contentArea.querySelector('h1');
-    let md = '';
-    if(h1) {
-        md += `# ${h1.innerText}\n\n`;
-    } else {
-        md += "見出しが見つかりませんでした。\n";
+    // outputArea要素が存在しない場合のフォールバック処理
+    function setOutputValue(value) {
+        if (outputArea) {
+            outputArea.value = value;
+        } else {
+            console.warn("outputArea element not found. Value:", value);
+        }
     }
-    
-    md += "注意: 完全な変換処理が利用できませんでした。content.jsが正しく読み込まれているか確認してください。";
 
-    return md;
-} 
+    // ボタン要素が存在しない場合のエラーハンドリングを追加
+    if (!convertBtn || !copyBtn || !saveBtn || !outputArea) {
+        console.error("必要なUI要素の一部が見つかりません。popup.htmlを確認してください。");
+        setStatus("UI要素の読み込みに失敗しました。", "status-error");
+        return; // 必須要素がない場合は処理を中断
+    }
+
+    // ファイル名をサニタイズする関数
+    function sanitizeFilename(name) {
+        if (typeof name !== 'string') {
+            name = 'confluence-export'; // デフォルト名
+        }
+        // ファイル名に使えない文字をアンダースコアに置換し、連続するアンダースコアを一つにまとめる
+        let sanitized = name.replace(/[\\\/:*?"<>|]/g, '_').replace(/__+/g, '_');
+        // 先頭と末尾のアンダースコアを削除
+        sanitized = sanitized.replace(/^_+|_+$/g, '');
+        // ファイル名が空になった場合はデフォルト名を使用
+        return sanitized.length > 0 ? sanitized : 'confluence-export';
+    }
+
+    // 変換ボタンの処理
+    convertBtn.addEventListener('click', () => {
+        setOutputValue(''); // 出力エリアをクリア
+        setStatus('変換中...', 'status-info');
+
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs.length === 0) {
+                setStatus('アクティブなタブが見つかりません。', 'status-error');
+                return;
+            }
+            const activeTab = tabs[0];
+            // content scriptが実行可能か確認 (URLベースでConfluenceページか判定する方が望ましい)
+            if (!activeTab.url || (!activeTab.url.includes('atlassian.net/wiki') && !activeTab.url.includes('localhost'))) { // localhostはテスト用
+                setStatus('Confluenceページで実行してください。', 'status-error');
+                setOutputValue("この拡張機能はConfluenceのページでのみ動作します。");
+                return;
+            }
+
+            chrome.scripting.executeScript(
+                {
+                    target: { tabId: activeTab.id },
+                    files: ['content.js']
+                },
+                () => {
+                    if (chrome.runtime.lastError) {
+                        console.error("content.jsの実行に失敗しました: ", chrome.runtime.lastError.message);
+                        setStatus('変換スクリプトの読み込みに失敗しました。', 'status-error');
+                        setOutputValue("エラー: " + chrome.runtime.lastError.message);
+                        return;
+                    }
+                    // content.jsの実行後、メッセージを送信して変換を依頼
+                    chrome.tabs.sendMessage(activeTab.id, { action: "convertToMarkdown" }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.error("変換処理の呼び出しに失敗: ", chrome.runtime.lastError.message);
+                            setStatus('変換処理の呼び出しに失敗しました。', 'status-error');
+                            setOutputValue("エラー: " + chrome.runtime.lastError.message);
+                            // responseがない場合やエラーの場合でも、タイトルだけでも取得できているか確認
+                            if(response && response.title) {
+                                 document.body.dataset.pageTitle = response.title;
+                            } else {
+                                document.body.dataset.pageTitle = 'confluence-export';
+                            }
+                            return;
+                        }
+
+                        if (response && typeof response.markdown === 'string') { // response.markdownの型もチェック
+                            setOutputValue(response.markdown);
+                            document.body.dataset.pageTitle = response.title || 'confluence-export'; // タイトルを保存
+                            setStatus('変換完了！', 'status-success');
+                            copyBtn.disabled = false;
+                            saveBtn.disabled = false;
+                        } else {
+                            setStatus('変換に失敗しました。応答が正しくありません。', 'status-error');
+                            setOutputValue("変換に失敗しました。コンテンツスクリプトからの応答が正しくありません。");
+                            document.body.dataset.pageTitle = (response && response.title) ? response.title : 'confluence-export';
+                        }
+                    });
+                }
+            );
+        });
+    });
+
+    // クリップボードにコピーボタンの処理
+    copyBtn.addEventListener('click', () => {
+        if (outputArea && outputArea.value) {
+            navigator.clipboard.writeText(outputArea.value)
+                .then(() => {
+                    setStatus('Markdownをクリップボードにコピーしました。', 'status-success');
+                })
+                .catch(err => {
+                    console.error('クリップボードへのコピーに失敗: ', err);
+                    setStatus('コピーに失敗しました。', 'status-error');
+                });
+        } else {
+            setStatus('コピーする内容がありません。', 'status-warning');
+        }
+    });
+
+    // ファイルとして保存ボタンの処理
+    saveBtn.addEventListener('click', () => {
+      if (outputArea && outputArea.value) {
+        try {
+          const pageTitle = document.body.dataset.pageTitle || 'confluence-export';
+          const filename = sanitizeFilename(pageTitle) + '.md';
+
+          const blob = new Blob([outputArea.value], { type: 'text/markdown;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename; // ここで動的なファイル名を使用
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setStatus(`「${filename}」として保存しました。`, 'status-success');
+        } catch (error) {
+            console.error('ファイルの保存中にエラーが発生しました: ', error);
+            setStatus('ファイルの保存に失敗しました。', 'status-error');
+        }
+      } else {
+        setStatus('保存する内容がありません。', 'status-warning');
+      }
+    });
+
+    // 初期状態ではコピー・保存ボタンを無効化
+    copyBtn.disabled = true;
+    saveBtn.disabled = true;
+}); 
