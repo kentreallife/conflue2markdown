@@ -29,15 +29,29 @@
 | **row 2 colunm1::**<br>- 箇条書き<br>- 箇条書き2 | **row 2 colunm2**<br>- 箇条書き<br>- 箇条書き2 |
 | **row 3 colunm1** | **row 3 colunm2** |
 
+# merging table cell
 
-[ ] チェックボックス
+|header1|header2|header3|
+|:------|:-----:|------:|
+|hoge   |>      |piyo   |
+|hoge   |^      |^      |
+|hoge   |^      |^      |
+|hoge   |       |piyo   |
+|^      |^      |piyo   |
 
-[ ] チェックボックス
+# チェックボックス
 
-| test | test | test |
-| ---- | ---- | ---- |
-| a | b | d |
-| 1 | c | c |
+- [ ] チェックボックス
+
+- [x] チェックボックス
+
+# ブロッククォート
+
+> [!NOTE]
+
+# インラインコード
+ `code`
+
 
 
 # 線
@@ -77,3 +91,29 @@
 [Qiitaのホームページ](https://qiita.com/)
 
 ​[マークダウン入門：読みやすく書きやすい文書作成の基本](https://zenn.dev/acntechjp/articles/572fff727d91e8)
+
+
+
+# merging table cell
+
+|header1|header2|header3|
+|:------|:-----:|------:|
+|hoge   |>      |piyo   |
+|hoge   |^      |^      |
+|hoge   |^      |^      |
+|hoge   |       |piyo   |
+|^      |^      |piyo   |
+
+# チェックボックス
+
+- [ ] チェックボックス
+
+- [x] チェックボックス
+
+# ブロッククォート
+
+> [!NOTE]
+
+# インラインコード
+ `code`
+
